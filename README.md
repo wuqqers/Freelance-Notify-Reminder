@@ -37,7 +37,7 @@ Uygulamayı kullanmaya başlamadan önce, aşağıdaki adımları izleyerek gere
 5. Uygulamayı çalıştırın:
 
     ```bash
-    python main.py
+    python Reminder.py
     ```
 
 
