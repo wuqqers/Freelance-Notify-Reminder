@@ -45,7 +45,7 @@ Uygulamayı kullanmaya başlamadan önce, aşağıdaki adımları izleyerek gere
 1. Paketlenmiş exe dosyasını indirin:
 
   ```bash  
- https://github.com/wuqqers/BionlukAlarm/releases/tag/main 
+ [https://github.com/wuqqers/BionlukAlarm/releases/tag/main ](https://github.com/wuqqers/Freelance-Notify-Reminder/releases/tag/Release)
   ```
 2. Dosyayı zipden çıkarın 
 3. Proje dizinindeki `.env` dosyasını düzenleyin bionluk giriş bilgilerinizi bilgilerinizi ekleyin ve kaydedin.
