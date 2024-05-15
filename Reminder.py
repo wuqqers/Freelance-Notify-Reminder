@@ -60,6 +60,7 @@ class BionlukApp:
 
     def play_notification_sound(self):
         if self.notification_sound and self.notification_sound.get_num_channels() > 0:
+            self.notification_sound.stop()  # Varsa önceki sesi durdur
             return
 
         pygame.mixer.init()
@@ -117,6 +118,8 @@ class BionlukApp:
                     self.play_notification_sound()
                 else:
                     message = "Yeni mesaj yok."
+                    if self.notification_sound and self.notification_sound.get_num_channels() > 0:
+                       self.notification_sound.stop()
 
                 self.update_message(message)
 
