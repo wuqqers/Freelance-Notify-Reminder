@@ -3,11 +3,7 @@ import time
 import tkinter as tk
 from infi.systray import SysTrayIcon
 import pygame
-from selenium import webdriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.firefox.options import Options
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
+from playwright.sync_api import sync_playwright
 from dotenv import load_dotenv
 
 load_dotenv()  # .env dosyasını yükle
@@ -22,15 +18,12 @@ class BionlukApp:
         root.iconbitmap('icon.ico')
         self.message_label = tk.Label(root, text="Başlatılıyor...", font=("Arial", 14))
         self.message_label.place(relx=0.5, rely=0.5, anchor="center")
-        self.options = Options()
         self.music_start_time = None
         self.notification_sound = None
-        self.options.headless = True
-        
-        self.driver = webdriver.Firefox(options=self.options)
-        self.driver.set_window_size(1, 1)
+        self.browser = None
+        self.page = None
         root.bind("<Unmap>", self.minimize_to_tray)
-        root.protocol("WM_DELETE_WINDOW", self.minimize_to_tray) 
+        root.protocol("WM_DELETE_WINDOW", self.minimize_to_tray)
         self.create_system_tray_icon()
 
     def create_system_tray_icon(self):
@@ -41,30 +34,25 @@ class BionlukApp:
             BionlukApp.icon_created = True
 
     def on_quit(self, systray=None):
-     pygame.mixer.quit()
-     self.driver.quit()
-     self.root.quit()  # Tkinter penceresini kapat
-     self.icon.visible = False  # SysTrayIcon'ı gizle
-     os._exit(0)
-
-
-
-
+      if self.page:
+        self.page.close()
+      if self.browser:
+        self.browser.close()
+      if self.playwright:
+        self.playwright.stop()
+        pygame.mixer.quit()
+        self.root.quit()
+        self.icon.visible = False
+        os._exit(0)
 
     def show_maximize_window(self, systray=None):
-        self.icon.visible = False  # Simgeyi gizle
-        self.root.deiconify()  # Pencereyi görünür yap
-        self.root.geometry("500x100")  # Pencere boyutunu ayarla
-
-
-
+        self.icon.visible = False
+        self.root.deiconify()
+        self.root.geometry("500x100")
 
     def minimize_to_tray(self, event=None):
-     self.icon.visible = False
-     self.root.withdraw()  # Pencereyi gizle
-
-
-
+        self.icon.visible = False
+        self.root.withdraw()
 
     def play_notification_sound(self):
         if self.notification_sound and self.notification_sound.get_num_channels() > 0:
@@ -76,6 +64,10 @@ class BionlukApp:
         self.music_start_time = time.time()
         self.check_music_status()
 
+    def stop_notification_sound(self):
+        if self.notification_sound and self.notification_sound.get_num_channels() > 0:
+            self.notification_sound.stop()
+
     def check_music_status(self):
         if self.notification_sound is None or self.notification_sound.get_num_channels() == 0:
             return
@@ -85,69 +77,60 @@ class BionlukApp:
             if remaining_time > 0:
                 self.root.after(int(remaining_time * 1000), self.check_music_status)
             else:
-                if self.driver.find_elements(By.CSS_SELECTOR, "span.button-badge.unread_message_count") and \
-                        self.driver.find_elements(By.CSS_SELECTOR, "span.button-badge.unread_message_count")[0].text.strip():
+                if self.check_unread_messages():
                     self.play_notification_sound()
 
     def start_app(self):
-        self.driver.set_window_position(-3000, 0)
-        self.driver.get("https://bionluk.com/login")
+        self.message_label.config(text="Giriş Yapılıyor...")
+        self.login()
 
-        message = "Giriş Yapılıyor..."
-        self.message_label.config(text=message)
-        username_input = WebDriverWait(self.driver, 10).until(
-            EC.presence_of_element_located((By.CSS_SELECTOR, "input[placeholder='E-posta veya kullanıcı adı']"))
-        )
-        password_input = self.driver.find_element(By.CSS_SELECTOR, "input[placeholder='Şifre']")
-        login_button = self.driver.find_element(By.CSS_SELECTOR, "button.super-button-green")
+    def login(self):
+        self.playwright = sync_playwright().start()
+        self.browser = self.playwright.firefox.launch(headless=True)
+        self.page = self.browser.new_page()
+        self.page.goto("https://bionluk.com/login")
 
         username = os.getenv("BIONLUK_USERNAME")
         password = os.getenv("BIONLUK_PASSWORD")
 
-        username_input.send_keys(username)
-        password_input.send_keys(password)
-        login_button.click()
+        self.page.fill("input[placeholder='E-posta veya kullanıcı adı']", username)
+        self.page.fill("input[placeholder='Şifre']", password)
+        self.page.click("button.super-button-green")
 
-        message = "Giriş Yapıldı, Mesajlar Kontrol Ediliyor"
-        self.message_label.config(text=message)
+        # Yeni cihaz giriş uyarısı kontrolü
+        time.sleep(5)  # Sayfanın yüklenmesi için bekleyin
+        error_message_div = self.page.query_selector("div.toasted.toasted-error.outline.default")
+        if error_message_div:
+            error_message_text = error_message_div.inner_text()
+            if "Yeni cihaz girişinizi doğrulayın." in error_message_text:
+                self.message_label.config(text=error_message_text)
+                self.root.after(60000, self.start_app)  # 1 dakika sonra tekrar giriş yapmayı dene
+                return  # Uyarı mesajı varsa giriş kontrolünü durdur ve bekle
 
+        self.message_label.config(text="Giriş Yapıldı, Mesajlar Kontrol Ediliyor")
         self.check_messages()
 
     def check_messages(self):
-     unread_message_count = self.driver.find_elements(By.CSS_SELECTOR, "span.button-badge.unread_message_count")
-
-     if unread_message_count:
-        message = "Yeni mesajlar var!"
-        self.play_notification_sound()
-     else:
-        message = "Yeni mesaj yok."
-        # Eğer mesaj yoksa bildirim sesini durdur
-        self.stop_notification_sound()
-
-     self.message_label.config(text=message)
-
-     if unread_message_count and unread_message_count[0].text.strip():
+        unread_message_count = self.page.query_selector("span.button-badge.unread_message_count")
+        
+        if unread_message_count and unread_message_count.inner_text().strip():
+            self.message_label.config(text="Yeni mesajlar var!")
+            self.play_notification_sound()
+        else:
+            self.message_label.config(text="Yeni mesaj yok.")
+            self.stop_notification_sound()
+        
         self.root.after(2000, self.check_messages)
-     else:
-        self.root.after(2000, self.check_messages)
-    
-    # Sayfanın yenilenmesi gerekip gerekmediğini kontrol et
-     if self.check_if_page_needs_refresh():
-        self.refresh_page()
 
-    def stop_notification_sound(self):
-     if self.notification_sound and self.notification_sound.get_num_channels() > 0:
-        pygame.mixer.fadeout(500)
-
+        if self.check_if_page_needs_refresh():
+            self.refresh_page()
 
     def check_if_page_needs_refresh(self):
-        # Belirli bir div'in varlığını kontrol et
-        warning_div = self.driver.find_elements(By.CSS_SELECTOR, "div.version-warning")
-        return len(warning_div) > 0
+        warning_div = self.page.query_selector("div.version-warning")
+        return warning_div is not None
 
     def refresh_page(self):
-        # Sayfayı yenile
-        self.driver.refresh()
+        self.page.reload()
 
     def run(self):
         self.root.after(2000, self.start_app)
