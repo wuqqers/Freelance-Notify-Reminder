@@ -26,11 +26,20 @@ class BionlukApp:
         self.music_start_time = None
         self.notification_sound = None
         self.options.headless = True
-        self.driver = webdriver.Firefox(options=self.options)
-        self.driver.set_window_size(1, 1)
+        self.driver = None
+        self.create_driver()  # WebDriver başlatma
         root.bind("<Unmap>", self.minimize_to_tray)
         root.protocol("WM_DELETE_WINDOW", self.minimize_to_tray) 
         self.create_system_tray_icon()
+
+    def create_driver(self):
+        if self.driver is not None:
+            try:
+                self.driver.quit()
+            except:
+                pass
+        self.driver = webdriver.Firefox(options=self.options)
+        self.driver.set_window_size(1, 1)
 
     def create_system_tray_icon(self):
         if not BionlukApp.icon_created:
@@ -40,44 +49,34 @@ class BionlukApp:
             BionlukApp.icon_created = True
 
     def on_quit(self, systray=None):
-     pygame.mixer.quit()
-     self.driver.quit()
-     self.root.quit()  # Tkinter penceresini kapat
-     self.icon.visible = False  # SysTrayIcon'ı gizle
-     os._exit(0)
-
-
-
-
+        pygame.mixer.quit()
+        self.driver.quit()
+        self.root.quit()  # Tkinter penceresini kapat
+        self.icon.visible = False  # SysTrayIcon'ı gizle
+        os._exit(0)
 
     def show_maximize_window(self, systray=None):
         self.icon.visible = False  # Simgeyi gizle
         self.root.deiconify()  # Pencereyi görünür yap
         self.root.geometry("500x100")  # Pencere boyutunu ayarla
 
-
-
-
     def minimize_to_tray(self, event=None):
-     self.icon.visible = False
-     self.root.withdraw()  # Pencereyi gizle
-
-
-
+        self.icon.visible = False
+        self.root.withdraw()  # Pencereyi gizle
 
     def play_notification_sound(self):
         if self.notification_sound and self.notification_sound.get_num_channels() > 0:
             return
-    
-    def stop_notification_sound(self):
-        if self.notification_sound and self.notification_sound.get_num_channels() > 0:
-            self.notification_sound.stop()
 
         pygame.mixer.init()
         self.notification_sound = pygame.mixer.Sound("bildirim.mp3")
         self.notification_sound.play()
         self.music_start_time = time.time()
         self.check_music_status()
+
+    def stop_notification_sound(self):
+        if self.notification_sound and self.notification_sound.get_num_channels() > 0:
+            self.notification_sound.stop()
 
     def check_music_status(self):
         if self.notification_sound is None or self.notification_sound.get_num_channels() == 0:
@@ -116,24 +115,30 @@ class BionlukApp:
         self.check_messages()
 
     def check_messages(self):
-        unread_message_count = self.driver.find_elements(By.CSS_SELECTOR, "span.button-badge.unread_message_count")
+        try:
+            unread_message_count = self.driver.find_elements(By.CSS_SELECTOR, "span.button-badge.unread_message_count")
 
-        if unread_message_count:
-            message = "Yeni mesajlar var!"
-            self.play_notification_sound()
-        else:
-            message = "Yeni mesaj yok."
+            if unread_message_count:
+                message = "Yeni mesajlar var!"
+                self.play_notification_sound()
+            else:
+                message = "Yeni mesaj yok."
+                self.stop_notification_sound()
 
-        self.message_label.config(text=message)
+            self.message_label.config(text=message)
 
-        if unread_message_count and unread_message_count[0].text.strip():
-            self.root.after(60000, self.check_messages)
-        else:
-            self.root.after(60000, self.check_messages)
-        
-        # Sayfanın yenilenmesi gerekip gerekmediğini kontrol et
-        if self.check_if_page_needs_refresh():
-            self.refresh_page()
+            if unread_message_count and unread_message_count[0].text.strip():
+                self.root.after(2000, self.check_messages)
+            else:
+                self.root.after(2000, self.check_messages)
+
+            # Sayfanın yenilenmesi gerekip gerekmediğini kontrol et
+            if self.check_if_page_needs_refresh():
+                self.refresh_page()
+
+        except:
+            self.create_driver()  # Tarayıcı kapatılmışsa yeniden başlat
+            self.start_app()
 
     def check_if_page_needs_refresh(self):
         # Belirli bir div'in varlığını kontrol et
